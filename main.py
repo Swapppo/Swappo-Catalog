@@ -1,9 +1,16 @@
-from fastapi import FastAPI, Depends, HTTPException, Query, status
+from fastapi import FastAPI, Depends, HTTPException, Query, status, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func
 from typing import List, Optional
 import math
+import os
+import uuid
+from pathlib import Path
+from PIL import Image
+import shutil
 from contextlib import asynccontextmanager
 
 from database import get_db, init_db
@@ -11,6 +18,13 @@ from models import (
     ItemDB, ItemCreate, ItemUpdate, ItemResponse, 
     ItemFeedParams, ErrorResponse, ItemStatus
 )
+
+
+# Create uploads directory
+UPLOADS_DIR = Path("uploads")
+UPLOADS_DIR.mkdir(exist_ok=True)
+ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
 
 @asynccontextmanager
@@ -41,6 +55,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files for serving uploaded images
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 
 # Helper function to calculate distance between two coordinates (Haversine formula)
@@ -82,6 +99,95 @@ async def root():
 async def health_check():
     """Detailed health check endpoint"""
     return {"status": "healthy"}
+
+
+@app.post(
+    "/upload-image",
+    tags=["Items"],
+    summary="Upload an image for an item",
+    responses={
+        200: {"description": "Image uploaded successfully"},
+        400: {"model": ErrorResponse, "description": "Invalid file"},
+        413: {"model": ErrorResponse, "description": "File too large"}
+    }
+)
+async def upload_image(file: UploadFile = File(...)):
+    """
+    Upload an image file and return the URL.
+    
+    Args:
+        file: Image file to upload
+        
+    Returns:
+        dict with image_url
+        
+    Raises:
+        HTTPException: If file is invalid or too large
+    """
+    import traceback
+    from io import BytesIO
+    
+    try:
+        print(f"Received file: {file.filename}, content_type: {file.content_type}")
+        
+        # Check file extension
+        file_ext = Path(file.filename).suffix.lower()
+        if not file_ext:
+            file_ext = '.jpg'  # Default extension
+        
+        if file_ext not in ALLOWED_EXTENSIONS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid file type. Allowed types: {', '.join(ALLOWED_EXTENSIONS)}"
+            )
+        
+        # Generate unique filename
+        unique_filename = f"{uuid.uuid4()}{file_ext}"
+        file_path = UPLOADS_DIR / unique_filename
+        
+        # Read file contents
+        contents = await file.read()
+        print(f"File size: {len(contents)} bytes")
+        
+        # Check file size
+        if len(contents) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"File too large. Maximum size: {MAX_FILE_SIZE / (1024*1024)}MB"
+            )
+        
+        # Verify it's a valid image using the contents
+        try:
+            img = Image.open(BytesIO(contents))
+            img.verify()
+            print(f"Image verified: {img.format}")
+        except Exception as img_error:
+            print(f"Image verification failed: {str(img_error)}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid image file: {str(img_error)}"
+            )
+        
+        # Save the file
+        print(f"Saving to: {file_path}")
+        with open(file_path, "wb") as buffer:
+            buffer.write(contents)
+        
+        print(f"File saved successfully: {unique_filename}")
+        
+        # Return the URL (relative path that will be served by FastAPI)
+        image_url = f"/uploads/{unique_filename}"
+        return {"image_url": image_url}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        print(f"ERROR in upload_image: {str(e)}\n{error_trace}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload image: {str(e)}"
+        )
 
 
 @app.post(
