@@ -134,6 +134,102 @@ async def create_item(
 
 
 @app.get(
+    "/items/feed",
+    response_model=List[ItemResponse],
+    tags=["Items", "Matching"],
+    summary="[CORE MATCHING API] Retrieve items for swiping feed",
+    responses={
+        200: {"description": "Feed items retrieved successfully"},
+        400: {"model": ErrorResponse, "description": "Invalid parameters"}
+    }
+)
+async def get_items_feed(
+    limit: int = Query(20, ge=1, le=100, description="Number of items to retrieve"),
+    user_id: str = Query(..., description="User ID requesting the feed"),
+    exclude_item_ids: Optional[str] = Query(None, description="Comma-separated list of item IDs to exclude"),
+    category: Optional[str] = Query(None, description="Filter by category"),
+    distance: Optional[float] = Query(None, ge=0, description="Maximum distance in kilometers"),
+    user_lat: Optional[float] = Query(None, ge=-90, le=90, description="User's latitude for distance filtering"),
+    user_lon: Optional[float] = Query(None, ge=-180, le=180, description="User's longitude for distance filtering"),
+    db: Session = Depends(get_db)
+):
+    """
+    [CORE MATCHING API] Retrieves items suitable for swiping based on filters.
+    
+    This API is designed to be called by the MatchService to provide personalized
+    item recommendations for users.
+    
+    Features:
+    - Excludes user's own items
+    - Excludes already swiped items
+    - Filters by category (optional)
+    - Filters by distance (optional, requires user location)
+    - Returns only active items
+    - Randomized order for discovery
+    
+    Args:
+        limit: Number of items to return (1-100)
+        user_id: User requesting the feed
+        exclude_item_ids: Comma-separated IDs of items already swiped
+        category: Filter by specific category
+        distance: Maximum distance in km
+        user_lat: User's latitude
+        user_lon: User's longitude
+        db: Database session
+        
+    Returns:
+        List of items suitable for swiping
+    """
+    # Build base query - only active items, exclude user's own items
+    query = db.query(ItemDB).filter(
+        and_(
+            ItemDB.status == ItemStatus.active.value,
+            ItemDB.owner_id != user_id
+        )
+    )
+    
+    # Exclude already swiped items
+    if exclude_item_ids:
+        try:
+            exclude_ids = [int(id.strip()) for id in exclude_item_ids.split(",") if id.strip()]
+            if exclude_ids:
+                query = query.filter(ItemDB.id.notin_(exclude_ids))
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid exclude_item_ids format. Must be comma-separated integers."
+            )
+    
+    # Filter by category
+    if category:
+        query = query.filter(ItemDB.category == category)
+    
+    # Fetch items
+    items = query.order_by(func.random()).limit(limit).all()
+    
+    # Apply distance filtering if location is provided
+    if distance is not None and user_lat is not None and user_lon is not None:
+        filtered_items = []
+        for item in items:
+            item_distance = calculate_distance(
+                user_lat, user_lon,
+                item.location_lat, item.location_lon
+            )
+            if item_distance <= distance:
+                filtered_items.append(item)
+        items = filtered_items[:limit]
+    elif (distance is not None) or (user_lat is not None) or (user_lon is not None):
+        # If any distance-related param is provided, all must be provided
+        if not all([distance is not None, user_lat is not None, user_lon is not None]):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="For distance filtering, all of distance, user_lat, and user_lon must be provided"
+            )
+    
+    return items
+
+
+@app.get(
     "/items/{item_id}",
     response_model=ItemResponse,
     tags=["Items"],
@@ -291,102 +387,6 @@ async def delete_item(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to archive item: {str(e)}"
         )
-
-
-@app.get(
-    "/items/feed",
-    response_model=List[ItemResponse],
-    tags=["Items", "Matching"],
-    summary="[CORE MATCHING API] Retrieve items for swiping feed",
-    responses={
-        200: {"description": "Feed items retrieved successfully"},
-        400: {"model": ErrorResponse, "description": "Invalid parameters"}
-    }
-)
-async def get_items_feed(
-    limit: int = Query(20, ge=1, le=100, description="Number of items to retrieve"),
-    user_id: str = Query(..., description="User ID requesting the feed"),
-    exclude_item_ids: Optional[str] = Query(None, description="Comma-separated list of item IDs to exclude"),
-    category: Optional[str] = Query(None, description="Filter by category"),
-    distance: Optional[float] = Query(None, ge=0, description="Maximum distance in kilometers"),
-    user_lat: Optional[float] = Query(None, ge=-90, le=90, description="User's latitude for distance filtering"),
-    user_lon: Optional[float] = Query(None, ge=-180, le=180, description="User's longitude for distance filtering"),
-    db: Session = Depends(get_db)
-):
-    """
-    [CORE MATCHING API] Retrieves items suitable for swiping based on filters.
-    
-    This API is designed to be called by the MatchService to provide personalized
-    item recommendations for users.
-    
-    Features:
-    - Excludes user's own items
-    - Excludes already swiped items
-    - Filters by category (optional)
-    - Filters by distance (optional, requires user location)
-    - Returns only active items
-    - Randomized order for discovery
-    
-    Args:
-        limit: Number of items to return (1-100)
-        user_id: User requesting the feed
-        exclude_item_ids: Comma-separated IDs of items already swiped
-        category: Filter by specific category
-        distance: Maximum distance in km
-        user_lat: User's latitude
-        user_lon: User's longitude
-        db: Database session
-        
-    Returns:
-        List of items suitable for swiping
-    """
-    # Build base query - only active items, exclude user's own items
-    query = db.query(ItemDB).filter(
-        and_(
-            ItemDB.status == ItemStatus.active.value,
-            ItemDB.owner_id != user_id
-        )
-    )
-    
-    # Exclude already swiped items
-    if exclude_item_ids:
-        try:
-            exclude_ids = [int(id.strip()) for id in exclude_item_ids.split(",") if id.strip()]
-            if exclude_ids:
-                query = query.filter(ItemDB.id.notin_(exclude_ids))
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid exclude_item_ids format. Must be comma-separated integers."
-            )
-    
-    # Filter by category
-    if category:
-        query = query.filter(ItemDB.category == category)
-    
-    # Fetch items
-    items = query.order_by(func.random()).limit(limit).all()
-    
-    # Apply distance filtering if location is provided
-    if distance is not None and user_lat is not None and user_lon is not None:
-        filtered_items = []
-        for item in items:
-            item_distance = calculate_distance(
-                user_lat, user_lon,
-                item.location_lat, item.location_lon
-            )
-            if item_distance <= distance:
-                filtered_items.append(item)
-        items = filtered_items[:limit]
-    elif (distance is not None) or (user_lat is not None) or (user_lon is not None):
-        # If any distance-related param is provided, all must be provided
-        if not all([distance is not None, user_lat is not None, user_lon is not None]):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="For distance filtering, all of distance, user_lat, and user_lon must be provided"
-            )
-    
-    return items
 
 
 if __name__ == "__main__":
