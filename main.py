@@ -240,6 +240,40 @@ async def create_item(
 
 
 @app.get(
+    "/items/my-items",
+    response_model=List[ItemResponse],
+    tags=["Items"],
+    summary="Get all items owned by a specific user",
+    responses={
+        200: {"description": "User's items retrieved successfully"},
+        400: {"model": ErrorResponse, "description": "Invalid parameters"}
+    }
+)
+async def get_my_items(
+    owner_id: str = Query(..., description="User ID to fetch items for"),
+    db: Session = Depends(get_db)
+):
+    """
+    Retrieve all items owned by a specific user.
+    
+    Args:
+        owner_id: User ID to fetch items for
+        db: Database session
+        
+    Returns:
+        List of items owned by the user
+    """
+    items = db.query(ItemDB).filter(
+        and_(
+            ItemDB.owner_id == owner_id,
+            ItemDB.status != ItemStatus.archived.value
+        )
+    ).order_by(ItemDB.created_at.desc()).all()
+    
+    return items
+
+
+@app.get(
     "/items/feed",
     response_model=List[ItemResponse],
     tags=["Items", "Matching"],
