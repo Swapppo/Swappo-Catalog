@@ -19,6 +19,11 @@ SQLAlchemy==2.0.44
 psycopg2-binary==2.9.11
 
 
+# Google Cloud
+
+google-cloud-storage==2.14.0
+
+
 
 # Environment and configuration
 

@@ -1,4 +1,5 @@
 import math
+import os
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -12,6 +13,7 @@ from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from database import get_db, init_db
+from gcs_storage import get_gcs_storage
 from models import (
     ErrorResponse,
     ItemCreate,
@@ -119,6 +121,9 @@ async def upload_image(file: UploadFile = File(...)):
     """
     Upload an image file and return the URL.
 
+    Images are uploaded to Google Cloud Storage for production,
+    or local filesystem for development.
+
     Args:
         file: Image file to upload
 
@@ -145,10 +150,6 @@ async def upload_image(file: UploadFile = File(...)):
                 detail=f"Invalid file type. Allowed types: {', '.join(ALLOWED_EXTENSIONS)}",
             )
 
-        # Generate unique filename
-        unique_filename = f"{uuid.uuid4()}{file_ext}"
-        file_path = UPLOADS_DIR / unique_filename
-
         # Read file contents
         contents = await file.read()
         print(f"File size: {len(contents)} bytes")
@@ -172,14 +173,32 @@ async def upload_image(file: UploadFile = File(...)):
                 detail=f"Invalid image file: {str(img_error)}",
             )
 
-        # Save the file
-        print(f"Saving to: {file_path}")
+        # Upload to GCS if enabled, otherwise save locally
+        use_gcs = os.getenv("USE_GCS", "true").lower() == "true"
+
+        if use_gcs:
+            try:
+                # Upload to Google Cloud Storage
+                gcs = get_gcs_storage()
+                image_url = gcs.upload_image(
+                    file_content=contents,
+                    filename=file.filename,
+                    content_type=file.content_type or "image/jpeg",
+                )
+                print(f"Image uploaded to GCS: {image_url}")
+                return {"image_url": image_url}
+            except Exception as gcs_error:
+                print(f"GCS upload failed, falling back to local: {gcs_error}")
+                # Fall through to local storage
+
+        # Local storage fallback (for development)
+        unique_filename = f"{uuid.uuid4()}{file_ext}"
+        file_path = UPLOADS_DIR / unique_filename
+
         with open(file_path, "wb") as buffer:
             buffer.write(contents)
 
-        print(f"File saved successfully: {unique_filename}")
-
-        # Return the URL (relative path that will be served by FastAPI)
+        print(f"File saved locally: {unique_filename}")
         image_url = f"/uploads/{unique_filename}"
         return {"image_url": image_url}
 
