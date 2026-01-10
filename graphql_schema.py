@@ -4,6 +4,7 @@ Using Strawberry GraphQL with FastAPI integration
 """
 
 import math
+from enum import Enum
 from typing import List, Optional
 
 import strawberry
@@ -35,7 +36,7 @@ def calculate_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
 
 # GraphQL Types
 @strawberry.enum
-class ItemStatusEnum(strawberry.enum.Enum):
+class ItemStatusEnum(Enum):
     """Item status enum for GraphQL"""
 
     ACTIVE = "active"
