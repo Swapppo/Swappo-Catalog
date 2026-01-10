@@ -1,15 +1,26 @@
 import asyncio
 import math
 import os
+import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, status
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
+from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 from strawberry.fastapi import GraphQLRouter
@@ -20,6 +31,13 @@ from graphql_schema import get_context, schema
 
 # Import gRPC server
 from grpc_server import serve_grpc
+from metrics import (
+    image_upload_size_bytes,
+    image_uploads_total,
+    items_created_total,
+    record_http_request,
+    update_item_metrics,
+)
 from models import (
     ErrorResponse,
     ItemCreate,
@@ -66,6 +84,31 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Prometheus instrumentation
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+
+
+# Middleware to track HTTP request metrics
+@app.middleware("http")
+async def metrics_middleware(request: Request, call_next):
+    # Skip metrics endpoint itself
+    if request.url.path == "/metrics":
+        return await call_next(request)
+
+    start_time = time.time()
+    response = await call_next(request)
+    duration = time.time() - start_time
+
+    record_http_request(
+        method=request.method,
+        endpoint=request.url.path,
+        status_code=response.status_code,
+        duration=duration,
+    )
+
+    return response
+
 
 # Configure CORS
 app.add_middleware(
@@ -210,6 +253,9 @@ async def upload_image(file: UploadFile = File(...)):
                     content_type=file.content_type or "image/jpeg",
                 )
                 print(f"Image uploaded to GCS: {image_url}")
+                # Record metrics
+                image_uploads_total.labels(status="success").inc()
+                image_upload_size_bytes.observe(len(contents))
                 return {"image_url": image_url}
             except Exception as gcs_error:
                 print(f"GCS upload failed, falling back to local: {gcs_error}")
@@ -223,12 +269,17 @@ async def upload_image(file: UploadFile = File(...)):
             buffer.write(contents)
 
         print(f"File saved locally: {unique_filename}")
+        # Record metrics
+        image_uploads_total.labels(status="success").inc()
+        image_upload_size_bytes.observe(len(contents))
         image_url = f"/uploads/{unique_filename}"
         return {"image_url": image_url}
 
     except HTTPException:
+        image_uploads_total.labels(status="failed").inc()
         raise
     except Exception as e:
+        image_uploads_total.labels(status="failed").inc()
         error_trace = traceback.format_exc()
         print(f"ERROR in upload_image: {str(e)}\n{error_trace}")
         raise HTTPException(
@@ -274,6 +325,9 @@ async def create_item(item: ItemCreate, db: Session = Depends(get_db)):
         db.add(db_item)
         db.commit()
         db.refresh(db_item)
+        # Record metrics
+        items_created_total.inc()
+        update_item_metrics(db)
         return db_item
     except Exception as e:
         db.rollback()

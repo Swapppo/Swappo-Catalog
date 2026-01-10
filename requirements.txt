@@ -29,6 +29,10 @@ psycopg2-binary==2.9.11
 
 google-cloud-storage==2.14.0
 
+# Metrics
+prometheus-client==0.21.0
+prometheus-fastapi-instrumentator==7.0.0
+
 
 
 # Environment and configuration
