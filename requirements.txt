@@ -10,6 +10,9 @@ pydantic_core==2.41.5
 
 python-multipart==0.0.20
 
+# GraphQL
+strawberry-graphql[fastapi]==0.245.0
+
 
 
 # Database

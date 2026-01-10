@@ -11,9 +11,11 @@ from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
+from strawberry.fastapi import GraphQLRouter
 
 from database import get_db, init_db
 from gcs_storage import get_gcs_storage
+from graphql_schema import get_context, schema
 from models import (
     ErrorResponse,
     ItemCreate,
@@ -61,6 +63,13 @@ app.add_middleware(
 
 # Mount static files for serving uploaded images
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
+# Add GraphQL endpoint
+graphql_app = GraphQLRouter(
+    schema,
+    context_getter=get_context,
+)
+app.include_router(graphql_app, prefix="/graphql", tags=["GraphQL"])
 
 
 # Helper function to calculate distance between two coordinates (Haversine formula)
