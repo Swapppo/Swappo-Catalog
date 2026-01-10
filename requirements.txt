@@ -16,7 +16,7 @@ strawberry-graphql[fastapi]==0.245.0
 # gRPC
 grpcio==1.68.1
 grpcio-tools==1.68.1
-protobuf==5.29.2
+protobuf>=5.29.2,<6.0.0
 
 # Database
 
