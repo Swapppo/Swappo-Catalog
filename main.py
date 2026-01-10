@@ -1,3 +1,4 @@
+import asyncio
 import math
 import os
 import uuid
@@ -16,6 +17,9 @@ from strawberry.fastapi import GraphQLRouter
 from database import get_db, init_db
 from gcs_storage import get_gcs_storage
 from graphql_schema import get_context, schema
+
+# Import gRPC server
+from grpc_server import serve_grpc
 from models import (
     ErrorResponse,
     ItemCreate,
@@ -39,8 +43,19 @@ async def lifespan(app: FastAPI):
     """
     # Startup: Initialize database
     init_db()
+
+    # Start gRPC server in background
+    grpc_task = asyncio.create_task(serve_grpc())
+    print("✅ gRPC server task created")
+
     yield
-    # Shutdown: Cleanup if needed
+
+    # Shutdown: Cleanup
+    grpc_task.cancel()
+    try:
+        await grpc_task
+    except asyncio.CancelledError:
+        print("✅ gRPC server stopped")
     pass
 
 
