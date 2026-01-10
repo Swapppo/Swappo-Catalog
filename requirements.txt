@@ -14,8 +14,8 @@ python-multipart==0.0.20
 strawberry-graphql[fastapi]==0.245.0
 
 # gRPC
-grpcio==1.68.1
-grpcio-tools==1.68.1
+grpcio==1.76.0
+grpcio-tools==1.76.0
 protobuf==6.33.3
 
 # Database
