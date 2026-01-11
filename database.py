@@ -46,8 +46,10 @@ def get_db() -> Generator[Session, None, None]:
 def init_db() -> None:
     """
     Initialize database tables.
-    Creates all tables defined in models.
+    Creates all tables defined in models and event store.
     """
+    # Import to register event_store table with SQLAlchemy
+    import event_sourcing.event_store  # noqa: F401
     from models import Base
 
     Base.metadata.create_all(bind=engine)

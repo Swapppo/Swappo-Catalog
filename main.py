@@ -25,6 +25,8 @@ from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 from strawberry.fastapi import GraphQLRouter
 
+# Import CQRS API
+from cqrs_api import router as cqrs_router
 from database import get_db, init_db
 from gcs_storage import get_gcs_storage
 from graphql_schema import get_context, schema
@@ -128,6 +130,9 @@ graphql_app = GraphQLRouter(
     context_getter=get_context,
 )
 app.include_router(graphql_app, prefix="/graphql", tags=["GraphQL"])
+
+# Add CQRS/Event Sourcing endpoints
+app.include_router(cqrs_router)
 
 
 # Helper function to calculate distance between two coordinates (Haversine formula)
