@@ -82,8 +82,48 @@ async def lifespan(app: FastAPI):
 # Initialize FastAPI app
 app = FastAPI(
     title="Swappo Catalog Service",
-    description="Microservice for managing item listings in the Swappo app - a Tinder-like platform for item swapping",
+    description="""## Item Catalog & Management API
+
+**Swappo Catalog Service** manages all item listings in the marketplace.
+
+### Features
+- 📦 Item CRUD operations (Create, Read, Update, Delete)
+- 🖼️ Image upload and storage (GCS integration)
+- 🔍 Item search and filtering
+- 📊 User item statistics
+- 🎨 GraphQL API for flexible queries
+- 🔌 gRPC service for inter-service communication
+- 📝 Event Sourcing & CQRS pattern implementation
+
+### Item Lifecycle
+1. Upload item images at `/api/v1/items/upload`
+2. Create item listing at `/api/v1/items`
+3. Items appear in feed at `/api/v1/items/feed`
+4. Update status (available/pending/swapped) via PATCH
+
+### Storage
+- Images stored in Google Cloud Storage bucket
+- All item changes tracked in event store
+- Support for event replay and audit trails
+    """,
     version="1.0.0",
+    contact={
+        "name": "Swappo API Support",
+        "url": "https://swappo.art",
+        "email": "api@swappo.art",
+    },
+    license_info={
+        "name": "MIT",
+    },
+    openapi_tags=[
+        {"name": "Health", "description": "Service health and status endpoints"},
+        {"name": "Items", "description": "Item listing CRUD operations"},
+        {"name": "Images", "description": "Image upload and management"},
+        {"name": "Feed", "description": "Discover items for swapping"},
+        {"name": "Event Sourcing", "description": "CQRS and event store operations"},
+        {"name": "GraphQL", "description": "GraphQL API for flexible queries"},
+    ],
+    root_path="/catalog",  # Fix for Kong reverse proxy - enables correct OpenAPI schema URLs
     lifespan=lifespan,
 )
 
