@@ -1,202 +1,124 @@
-# Swappo Catalog Microservice
+# Swappo-Catalog
 
-A FastAPI-based microservice for managing item listings in the Swappo app - a Tinder-like platform for item swapping.
+Item catalog microservice for the Swappo platform with CRUD operations, smart matching feed, and multi-protocol support (REST, GraphQL, gRPC).
 
 ## Features
 
-- **CRUD Operations**: Create, read, update, and delete item listings
-- **Smart Feed API**: Personalized item recommendations with filtering
-- **Location-Based**: Distance-based filtering using Haversine formula
-- **Soft Delete**: Items are archived rather than permanently deleted
+- **CRUD Operations**: Full item listing management with soft delete
+- **Smart Feed API**: Location-based filtering with Haversine distance calculation
+- **Multi-Protocol Support**: REST, GraphQL, and gRPC endpoints
+- **Event Sourcing/CQRS**: Event-driven architecture support
+- **Image Upload**: Google Cloud Storage integration with local fallback
+- **Prometheus Metrics**: Built-in monitoring and instrumentation
 - **Owner Verification**: Secure ownership checks for modifications
-- **PostgreSQL Database**: Robust data persistence
-- **Docker Support**: Easy deployment with Docker and Docker Compose
-
-## API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/items` | Create a new item listing |
-| `GET` | `/items/{item_id}` | Retrieve a single item by ID |
-| `PUT` | `/items/{item_id}` | Update an existing item listing |
-| `DELETE` | `/items/{item_id}` | Archive an item (soft delete) |
-| `GET` | `/items/feed` | **[CORE MATCHING API]** Get items for swiping feed |
-| `GET` | `/health` | Health check endpoint |
-
-## Tech Stack
-
-- **FastAPI**: Modern, fast web framework
-- **Pydantic**: Data validation and serialization
-- **SQLAlchemy**: SQL toolkit and ORM
-- **PostgreSQL**: Relational database
-- **Docker**: Containerization
-- **Uvicorn**: ASGI server
 
 ## Quick Start
 
-### Using Docker Compose (Recommended)
+### Docker (Recommended)
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd Swappo-Catalog
-   ```
+```bash
+docker-compose up -d
+```
 
-2. **Start the services**
-   ```bash
-   docker-compose up -d
-   ```
-
-3. **Access the API**
-   - API: http://localhost:8000
-   - API Docs (Swagger): http://localhost:8000/docs
-   - ReDoc: http://localhost:8000/redoc
-
-4. **Optional: Start PgAdmin for database management**
-   ```bash
-   docker-compose --profile tools up -d
-   ```
-   - PgAdmin: http://localhost:5050 (admin@swappo.com / admin)
+Optional database management UI:
+```bash
+docker-compose --profile tools up -d
+```
+Access PgAdmin at http://localhost:5050 (admin@swappo.com / admin)
 
 ### Local Development
 
-1. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. **Set up environment variables**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your configuration
-   ```
-
-3. **Start PostgreSQL** (if not using Docker)
-   ```bash
-   # Make sure PostgreSQL is running on localhost:5432
-   ```
-
-4. **Run the application**
-   ```bash
-   uvicorn main:app --reload
-   ```
-
-## API Usage Examples
-
-### Create an Item
+1. Install dependencies:
 ```bash
-curl -X POST "http://localhost:8000/items" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Vintage Camera",
-    "description": "Classic 35mm film camera in excellent condition",
-    "category": "Electronics",
-    "image_urls": ["https://example.com/image1.jpg"],
-    "location_lat": 40.7128,
-    "location_lon": -74.0060,
-    "owner_id": "user123"
-  }'
+pip install -r requirements.txt
 ```
 
-### Get Item Feed (Matching API)
+2. Run the server:
 ```bash
-curl -X GET "http://localhost:8000/items/feed?user_id=user456&limit=20&category=Electronics&distance=50&user_lat=40.7128&user_lon=-74.0060&exclude_item_ids=1,2,3"
+uvicorn main:app --reload
 ```
 
-### Update an Item
-```bash
-curl -X PUT "http://localhost:8000/items/1?owner_id=user123" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "status": "swapped"
-  }'
-```
+## API Endpoints
 
-### Delete (Archive) an Item
-```bash
-curl -X DELETE "http://localhost:8000/items/1?owner_id=user123"
-```
+### REST API
 
-## Project Structure
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| GET | `/` | Service info | No |
+| GET | `/health` | Health check | No |
+| POST | `/upload-image` | Upload item image | No |
+| POST | `/items` | Create item listing | No |
+| GET | `/items/feed` | Get swiping feed (core matching) | No |
+| GET | `/items/my-items` | Get user's items | No |
+| GET | `/items/{item_id}` | Get item by ID | No |
+| PUT | `/items/{item_id}` | Update item (owner only) | Yes |
+| DELETE | `/items/{item_id}` | Archive item (owner only) | Yes |
+| GET | `/metrics` | Prometheus metrics | No |
 
-```
-Swappo-Catalog/
-├── main.py              # FastAPI application and endpoints
-├── models.py            # Pydantic and SQLAlchemy models
-├── database.py          # Database configuration and session management
-├── requirements.txt     # Python dependencies
-├── Dockerfile          # Docker container configuration
-├── docker-compose.yml  # Multi-container Docker setup
-├── .env.example        # Environment variables template
-├── .gitignore         # Git ignore rules
-└── README.md          # This file
-```
+### GraphQL
 
-## Database Schema
+- **Endpoint**: `/graphql`
 
-### Items Table
+### gRPC
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | Integer | Primary key |
-| `name` | String(255) | Item name |
-| `description` | Text | Item description |
-| `category` | String(100) | Item category |
-| `image_urls` | Array[String] | List of image URLs |
-| `location_lat` | Float | Latitude coordinate |
-| `location_lon` | Float | Longitude coordinate |
-| `owner_id` | String(100) | Owner user ID |
-| `status` | String(20) | active/archived/swapped |
-| `created_at` | DateTime | Creation timestamp |
-| `updated_at` | DateTime | Last update timestamp |
+- **Port**: 50051
+- **Proto**: See [protos/](protos/) directory
+- Generate stubs: `.\generate_grpc.ps1` (Windows) or `./generate_grpc.sh` (Linux/Mac)
 
-## Configuration
+### Event Sourcing/CQRS
 
-Environment variables can be set in a `.env` file:
+See [EVENT_SOURCING_README.md](EVENT_SOURCING_README.md) for event-driven endpoints.
 
-```env
-DATABASE_URL=postgresql://swappo_user:swappo_pass@localhost:5432/swappo_catalog
-SQL_ECHO=false
-```
+## Feed API Details
 
-## Development
+The `/items/feed` endpoint is the core matching API with advanced filtering:
 
-### Running Tests
+**Query Parameters:**
+- `user_id` (required): User requesting feed
+- `limit`: Items to return (1-100, default 20)
+- `exclude_item_ids`: Comma-separated IDs to exclude
+- `category`: Filter by category
+- `distance`: Max distance in km (requires user location)
+- `user_lat`, `user_lon`: User coordinates for distance filtering
+
+**Features:**
+- Excludes user's own items
+- Excludes already swiped items
+- Location-based filtering (Haversine formula)
+- Randomized order for discovery
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_URL` | - | PostgreSQL connection string |
+| `SQL_ECHO` | false | Enable SQL query logging |
+| `USE_GCS` | true | Use Google Cloud Storage for images |
+| `GCS_BUCKET_NAME` | - | GCS bucket name |
+| `GOOGLE_APPLICATION_CREDENTIALS` | - | Path to GCS credentials JSON |
+
+## Documentation
+
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
+- **GraphQL Playground**: http://localhost:8000/graphql
+
+## Additional Features
+
+- **GraphQL**: See [GRAPHQL_GUIDE.md](GRAPHQL_GUIDE.md)
+- **Event Sourcing**: See [EVENT_SOURCING_README.md](EVENT_SOURCING_README.md)
+
+## Testing
+
 ```bash
 pytest
 ```
 
-### Database Migrations
-The application automatically creates tables on startup. For production, consider using Alembic for migrations.
+## Generate API Schema
 
-### Code Style
-- Follow PEP 8 guidelines
-- Use type hints
-- Add docstrings to functions and classes
-
-## Deployment
-
-### Production Considerations
-
-1. **Security**
-   - Change default passwords in `docker-compose.yml`
-   - Use environment variables for sensitive data
-   - Configure CORS appropriately
-   - Implement authentication/authorization
-
-2. **Performance**
-   - Add database indexes
-   - Implement caching (Redis)
-   - Use connection pooling
-   - Add rate limiting
-
-3. **Monitoring**
-   - Set up logging
-   - Add application metrics
-   - Configure health checks
-   - Implement error tracking
-
-## License
+```bash
+python -c "import json; from main import app; print(json.dumps(app.openapi(), indent=2))" > api_schema.json
+```
 
 [Your License Here]
 
