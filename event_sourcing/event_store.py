@@ -40,7 +40,7 @@ class EventStoreEntry(Base):
 
     # Event payload - stored as JSON
     payload = Column(Text, nullable=False)
-    metadata = Column(Text, default="{}")
+    event_metadata = Column(Text, default="{}")
 
     # Indexes for efficient querying
     __table_args__ = (
@@ -94,7 +94,7 @@ class EventStore:
             timestamp=event.timestamp,
             user_id=event.user_id,
             payload=json.dumps(payload, default=str),
-            metadata=json.dumps(event.metadata, default=str),
+            event_metadata=json.dumps(event.metadata, default=str),
         )
 
         self.db.add(entry)

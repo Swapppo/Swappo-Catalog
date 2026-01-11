@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS event_store (
     timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
     user_id VARCHAR(100) NOT NULL,
     payload TEXT NOT NULL,
-    metadata TEXT DEFAULT '{}'
+    event_metadata TEXT DEFAULT '{}'
 );
 
 CREATE INDEX IF NOT EXISTS idx_event_id ON event_store(event_id);
