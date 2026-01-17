@@ -287,7 +287,7 @@ async def upload_image(file: UploadFile = File(...)):
 
         # Upload to GCS if enabled, otherwise save locally
         use_gcs = os.getenv("USE_GCS", "true").lower() == "true"
-
+        print(f"Using GCS: {use_gcs}")
         if use_gcs:
             try:
                 # Upload to Google Cloud Storage
@@ -317,7 +317,7 @@ async def upload_image(file: UploadFile = File(...)):
         # Record metrics
         image_uploads_total.labels(status="success").inc()
         image_upload_size_bytes.observe(len(contents))
-        image_url = f"/uploads/{unique_filename}"
+        image_url = f"/catalog/uploads/{unique_filename}"
         return {"image_url": image_url}
 
     except HTTPException:

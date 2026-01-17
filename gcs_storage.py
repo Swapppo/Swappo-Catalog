@@ -59,7 +59,7 @@ class GCSStorage:
         blob.upload_from_string(file_content, content_type=content_type)
 
         # Make blob publicly accessible
-        blob.make_public()
+        # blob.make_public()  # Disabled: using Uniform Bucket-Level Access
 
         # Return public URL
         return blob.public_url
