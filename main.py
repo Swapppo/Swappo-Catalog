@@ -28,10 +28,16 @@ from strawberry.fastapi import GraphQLRouter
 # Import CQRS API
 from cqrs_api import router as cqrs_router
 from database import get_db, init_db
-from gcs_storage import get_gcs_storage
-from graphql_schema import get_context, schema
 
 # Import gRPC server
+from event_sourcing.command_handlers import CommandHandler
+from event_sourcing.commands import (
+    CreateItemCommand,
+    DeleteItemCommand,
+    UpdateItemCommand,
+)
+from gcs_storage import get_gcs_storage
+from graphql_schema import get_context, schema
 from grpc_server import serve_grpc
 from metrics import (
     image_upload_size_bytes,
@@ -87,13 +93,13 @@ app = FastAPI(
 **Swappo Catalog Service** manages all item listings in the marketplace.
 
 ### Features
-- 📦 Item CRUD operations (Create, Read, Update, Delete)
-- 🖼️ Image upload and storage (GCS integration)
-- 🔍 Item search and filtering
-- 📊 User item statistics
-- 🎨 GraphQL API for flexible queries
-- 🔌 gRPC service for inter-service communication
-- 📝 Event Sourcing & CQRS pattern implementation
+- Item CRUD operations (Create, Read, Update, Delete)
+- Image upload and storage (GCS integration)
+- Item search and filtering
+- User item statistics
+- GraphQL API for flexible queries
+- gRPC service for inter-service communication
+- Event Sourcing & CQRS pattern implementation
 
 ### Item Lifecycle
 1. Upload item images at `/api/v1/items/upload`
@@ -349,15 +355,18 @@ async def create_item(item: ItemCreate, db: Session = Depends(get_db)):
     """
     Create a new item listing.
 
-    Args:
-        item: Item creation data
-        db: Database session
-
-    Returns:
-        Created item object
+    Uses Event Sourcing pattern:
+    1. Validates request
+    2. Creates CreateItemCommand
+    3. Handles command (emits ItemCreatedEvent)
+    4. Updates read model
     """
     try:
-        db_item = ItemDB(
+        # Use CQRS CommandHandler
+        handler = CommandHandler(db)
+
+        command = CreateItemCommand(
+            user_id=item.owner_id,
             name=item.name,
             description=item.description,
             category=item.category,
@@ -365,17 +374,18 @@ async def create_item(item: ItemCreate, db: Session = Depends(get_db)):
             location_lat=item.location_lat,
             location_lon=item.location_lon,
             owner_id=item.owner_id,
-            status=ItemStatus.active.value,
         )
-        db.add(db_item)
-        db.commit()
-        db.refresh(db_item)
+
+        item_id = handler.handle_create_item(command)
+
         # Record metrics
         items_created_total.inc()
         update_item_metrics(db)
-        return db_item
+
+        # Return the created item from the read model
+        return db.query(ItemDB).filter(ItemDB.id == item_id).first()
     except Exception as e:
-        db.rollback()
+        print(f"Error creating item: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create item: {str(e)}",
@@ -606,20 +616,29 @@ async def update_item(
             detail="You are not authorized to update this item",
         )
 
-    # Update fields
-    update_data = item_update.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        if field == "status" and value:
-            setattr(item, field, value.value)
-        else:
-            setattr(item, field, value)
-
     try:
-        db.commit()
+        # Use CQRS CommandHandler
+        handler = CommandHandler(db)
+
+        # Prepare changes
+        changes = item_update.model_dump(exclude_unset=True)
+        # Convert status Enum to string value if present
+        if "status" in changes and changes["status"]:
+            changes["status"] = changes["status"].value
+
+        command = UpdateItemCommand(user_id=owner_id, item_id=item_id, changes=changes)
+
+        handler.handle_update_item(command)
+
+        # Return updated item from read model
         db.refresh(item)
         return item
+
     except Exception as e:
-        db.rollback()
+        print(f"Error updating item: {e}")
+        # Only rollback if we haven't committed in handler (handler usually commits)
+        # But for safety in case handler failed before commit
+        # db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update item: {str(e)}",
@@ -673,12 +692,21 @@ async def delete_item(
         )
 
     # Soft delete - set status to archived
-    item.status = ItemStatus.archived.value
+    # Used to use direct update, now uses Event Sourcing
 
     try:
-        db.commit()
+        # Use CQRS CommandHandler
+        handler = CommandHandler(db)
+
+        command = DeleteItemCommand(
+            user_id=owner_id, item_id=item_id, reason="User requested deletion"
+        )
+
+        handler.handle_delete_item(command)
+
     except Exception as e:
-        db.rollback()
+        print(f"Error deleting item: {e}")
+        # db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to archive item: {str(e)}",
