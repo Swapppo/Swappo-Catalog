@@ -69,6 +69,9 @@ class CommandHandler:
         # Store event
         self.event_store.append_event(event)
 
+        # Log event
+        self._log_event(event)
+
         # Update read model
         update_read_model(self.db, event)
 
@@ -107,6 +110,9 @@ class CommandHandler:
         # Store event
         self.event_store.append_event(event)
 
+        # Log event
+        self._log_event(event)
+
         # Update read model
         update_read_model(self.db, event)
 
@@ -136,6 +142,9 @@ class CommandHandler:
         # Store event
         self.event_store.append_event(event)
 
+        # Log event
+        self._log_event(event)
+
         # Update read model
         update_read_model(self.db, event)
 
@@ -163,6 +172,9 @@ class CommandHandler:
         # Store event
         self.event_store.append_event(event)
 
+        # Log event
+        self._log_event(event)
+
         # Update read model
         update_read_model(self.db, event)
 
@@ -170,3 +182,39 @@ class CommandHandler:
         """Get next version number for an aggregate"""
         events = self.event_store.get_events_for_aggregate(aggregate_id)
         return len(events) + 1
+
+    def _log_event(self, event):
+        """
+        Log the event details to stdout (Cloud Logging)
+        """
+        import json
+        from datetime import datetime
+
+        # Convert event to dict for logging
+        try:
+            event_dict = event.model_dump()
+
+            # Extract core fields
+            event_type = getattr(event, "event_type", "unknown")
+            aggregate_id = getattr(event, "aggregate_id", "unknown")
+            timestamp = getattr(event, "timestamp", datetime.now())
+            user_id = getattr(event, "user_id", "unknown")
+            version = getattr(event, "version", 1)
+
+            # Everything else is payload
+            payload = {
+                k: v
+                for k, v in event_dict.items()
+                if k
+                not in ["event_type", "aggregate_id", "timestamp", "user_id", "version"]
+            }
+
+            print("\n🔍 --- EVENT SOURCING LOG ---")
+            print(f"[{timestamp}] {event_type} (ID: {aggregate_id})")
+            print(f"  User: {user_id}")
+            print(f"  Version: {version}")
+            print(f"  Payload: {json.dumps(payload, indent=2, default=str)}")
+            print("--------------------------------------------------\n")
+
+        except Exception as e:
+            print(f"⚠️ Error logging event: {e}")
